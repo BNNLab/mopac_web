@@ -1,0 +1,66 @@
+import streamlit as st
+import subprocess
+import os
+import tempfile
+import zipfile
+import io
+
+st.title("MOPAC-Web")
+st.write("For when one only need to test a job and can't be bothered to install MOPAC or WebMO.")
+st.write("Upload a `.mop` input file and run MOPAC. "
+         "You will be able to download both `.out` and `.aux` in a single ZIP file.")
+
+uploaded_file = st.file_uploader("Upload MOPAC input file (.mop)", type=["mop"])
+
+if uploaded_file is not None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        input_path = os.path.join(temp_dir, uploaded_file.name)
+
+        # Save uploaded file
+        with open(input_path, "wb") as f:
+            f.write(uploaded_file.read())
+
+        base_name = os.path.splitext(uploaded_file.name)[0]
+        out_file = os.path.join(temp_dir, f"{base_name}.out")
+        aux_file = os.path.join(temp_dir, f"{base_name}.aux")
+
+        if st.button("Run MOPAC"):
+            with st.spinner("Running MOPAC..."):
+                try:
+                    # Execute MOPAC
+                    cmd = ["mopac", input_path]
+                    with open(out_file, "w") as out_f:
+                        subprocess.run(cmd, stdout=out_f, stderr=subprocess.STDOUT, check=True)
+
+                    st.success("MOPAC completed!")
+
+                    # Create ZIP in memory
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+                        if os.path.exists(out_file):
+                            zipf.write(out_file, arcname=f"{base_name}.out")
+                        if os.path.exists(aux_file):
+                            zipf.write(aux_file, arcname=f"{base_name}.aux")
+
+                    zip_buffer.seek(0)
+
+                    # Single download button
+                    st.download_button(
+                        label="Download Results (ZIP)",
+                        data=zip_buffer,
+                        file_name=f"{base_name}_results.zip",
+                        mime="application/zip"
+                    )
+
+                except subprocess.CalledProcessError:
+                    st.error("Error: MOPAC failed to run. Check the input file.")
+                except Exception as e:
+                    st.error(f"Unexpected error: {e}")
+# =========================
+# Sidebar controls
+# =========================
+st.sidebar.image("images/BNNLab_v3.png")
+st.sidebar.header("Acknowledgements")
+st.sidebar.write("This web tool was built to test MOPAC input files. MOPAC is an open-source molecule modelling package which employs molecular mechanics and semi-empirical methods.")
+st.sidebar.header("Disclaimer")
+st.sidebar.write("This software was developed by BNNLab, with all rights reserved. It is offered 'as is', without warranty of any kind, express or implied. The user assumes all risk for any malfunctions, errors, or damages resulting from the use of this software. The creator is not responsible for any direct or indirect loss arising from its use.")
